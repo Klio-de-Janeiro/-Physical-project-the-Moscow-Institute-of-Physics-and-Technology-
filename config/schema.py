@@ -1,29 +1,33 @@
-from pydantic import BaseModel, Field, model_validator
-from typing import List
+from pydantic import BaseModel, Field
+from typing import List, Any
 
 class SimulationConfig(BaseModel):
-    N_src: int = Field(0, ge=0, le=10)
-    x_src: List[float] = []
-    wave_speed: float = Field(0.2, ge=0.01, le=2.0)   # ✅ добавлено
-    lambdas: List[float] = []
-    E0: List[float] = []
-    phi0: List[float] = []
-    source_colors: List[str] = []
-    src_widths: List[float] = []
-    delta_lambda: float = Field(0.0, ge=0, le=50e-9)
-    z_trans: float = Field(0.2, ge=0.01, le=1.0)
-    x_slit: List[float] = []
-    w_slit: float = Field(1e-4, ge=1e-6, le=1e-3)
-    z_screen: float = Field(0.5, ge=0.1, le=2.0)
-    dt_emit: float = Field(1.0, ge=0.5, le=3.0)
-    dt_anim: float = Field(0.033, ge=0.016, le=0.05)
-    spatial_samples: int = Field(20, ge=1, le=100)
-    screen_resolution: int = Field(400, ge=100, le=1000)
+    """Глобальные настройки симуляции"""
+    
+    # Геометрия сцены
+    z_screen: float = 0.6        # Финальный экран (поменяли на 0.6 по твоему ТЗ)
+    z_trans: float = 0.2         # Положение преграды (щелей)
+    wave_speed: float = 0.2      # Оптимальная скорость для мм-масштаба
+    dt_anim: float = 0.033
+    screen_resolution: int = 1000
 
-    @model_validator(mode='after')
-    def check_lengths(self):
-        src_fields = [self.x_src, self.lambdas, self.E0, self.phi0, self.source_colors, self.src_widths]
-        for f in src_fields:
-            if len(f) != self.N_src:
-                raise ValueError(f'List length must match N_src={self.N_src}')
-        return self
+    # Настройки когерентности и щелей
+    delta_lambda: float = 0.0
+    spatial_samples: int = 10
+    w_slit: float = 0.0005       # 0.5 мм ширина щели
+    slits_enabled: bool = False
+    
+    # НОВОЕ: дистанция между щелями (в метрах)
+    slit_distance: float = 0.002 # 2 мм по умолчанию
+
+    # --- ИСТОЧНИКИ ---
+    N_src: int = 0
+    x_src: List[float] = Field(default_factory=list)
+    lambdas: List[float] = Field(default_factory=list)
+    E0: List[float] = Field(default_factory=list)
+    phi0: List[float] = Field(default_factory=list) # Начальная фаза (рад)
+    src_widths: List[float] = Field(default_factory=list)
+    source_colors: List[Any] = Field(default_factory=list)
+
+    # --- ЩЕЛИ ---
+    x_slit: List[float] = Field(default_factory=list)

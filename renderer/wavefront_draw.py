@@ -1,40 +1,60 @@
 import numpy as np
-from utils.color_map import wavelength_to_rgb
 
 class WavefrontDrawer:
     def __init__(self):
-        self.waves = []  # [{'center_x': float, 'radius': float, 'color': tuple}]
-
-    # Вызывать при добавлении/удалении источников (один раз)
-    def rebuild_from_config(self, config, current_time=None):
-        """Создаёт начальные волны от каждого источника (радиус = 0)"""
-        self.waves.clear()
-        for i in range(len(config.x_src)):
-            x_src = config.x_src[i]
-            width = config.src_widths[i]
-            lam = config.lambdas[i]
-            rgb = wavelength_to_rgb(lam * 1e9)
-            # Для протяжённого источника — два края, для точечного — один центр
-            centers = [x_src - width/2, x_src + width/2] if width > 0 else [x_src]
-            for cx in centers:
-                self.waves.append({
-                    'center_x': cx,
-                    'radius': 0.0,
-                    'color': rgb
-                })
+        self.waves = []  
 
     def update_radii(self, dt, speed, config):
-        """Увеличивает радиус каждой волны, удаляет ушедшие далеко за экран"""
-        for wave in self.waves[:]:  # проходим по копии, чтобы можно было удалять
+        """Физика роста радиуса и точная генерация вторичных волн с компенсацией разности хода"""
+        slits_on = getattr(config, 'slits_enabled', False)
+        
+        for wave in self.waves[:]: 
             wave['radius'] += speed * dt
-            # Удаляем волну, когда она прошла экран и ещё немного (на 0.2 м)
+            
+            # 1. Удаляем волны, которые улетели за финальный экран наблюдения
             if wave['radius'] > config.z_screen + 0.2:
                 self.waves.remove(wave)
+                continue
+                
+            # 2. ПРИНЦИП ГЮЙГЕНСА (Вторичные волны)
+            if slits_on and wave.get('is_primary', True):
+                if hasattr(config, 'x_slit') and len(config.x_slit) > 0:
+                    
+                    for i, x_s in enumerate(config.x_slit):
+                        if i in wave['slits_spawned']:
+                            continue
+                            
+                        # Считаем точное диагональное расстояние от центра первичной волны до щели
+                        dx = x_s - wave['center_x']
+                        dz = config.z_trans - wave['center_z']
+                        dist_to_slit = np.sqrt(dx**2 + dz**2)
+                        
+                        # Если волна дошла до щели (или перелетела её в этом кадре)
+                        if wave['radius'] >= dist_to_slit:
+                            wave['slits_spawned'].add(i)
+                            
+                            # СЧИТАЕМ РАЗНОСТЬ ХОДА (Идеальная компенсация перелета)
+                            excess_radius = wave['radius'] - dist_to_slit
+                            
+                            # Спавним вторичную волну УЖЕ подросшей на величину перелета!
+                            self.add_wave(
+                                center_z=config.z_trans,
+                                center_x=x_s,
+                                color=wave['color'],
+                                is_primary=False,
+                                initial_radius=excess_radius # <--- ИСПРАВЛЕНИЕ ЗДЕСЬ
+                            )
 
-    def add_wave(self, center_x, color, initial_radius=0.0):
-        """Добавляет новую волну от источника (вызывается по таймеру)"""
+    def add_wave(self, center_z, center_x, color, is_primary=True, initial_radius=0.0):
+        """Добавление новой волны (с поддержкой стартового радиуса)"""
         self.waves.append({
+            'center_z': center_z,
             'center_x': center_x,
-            'radius': initial_radius,
-            'color': color
+            'radius': initial_radius, # <--- ТЕПЕРЬ МОЖЕТ БЫТЬ НЕ НОЛЬ
+            'color': color,
+            'is_primary': is_primary,
+            'slits_spawned': set() 
         })
+        
+    def clear(self):
+        self.waves.clear()

@@ -1,16 +1,31 @@
 import numpy as np
-def compute_field_from_source_to_point(source_x, source_z, target_x, target_z, wavelength, E0, phi0):
-    dx = target_x - source_x
-    dz = target_z - source_z
-    r = np.sqrt(dx**2 + dz**2)
-    r[r < 1e-12] = 1e-12
-    k = 2 * np.pi / wavelength
-    return (E0 / r) * np.exp(-1j * (k * r - phi0))
 
-def propagate_from_slits_to_screen(slit_x, slit_amplitude, slit_phase, screen_x, z_screen, wavelength):
-    dx = screen_x[np.newaxis, :] - slit_x[:, np.newaxis]
-    r = np.sqrt(dx**2 + z_screen**2)
-    k = 2 * np.pi / wavelength
-    amp = slit_amplitude[:, np.newaxis] / r
-    phase = slit_phase[:, np.newaxis]
-    return amp * np.exp(-1j * (k * r - phase))
+def calculate_field(x_sources, z_sources, wavelengths, amplitudes, x_screen, z_screen):
+    """
+    Вычисляет суммарное комплексное поле в точках экрана от набора источников.
+    
+    :param x_sources: np.array координат x источников
+    :param z_sources: np.array координат z источников
+    :param wavelengths: np.array длин волн (в метрах)
+    :param amplitudes: np.array начальных амплитуд E0
+    :param x_screen: np.array координат x точек на экране
+    :param z_screen: координата z экрана (константа 0.5)
+    :return: np.array комплексных амплитуд поля на экране
+    """
+    # Создаем сетку: строки - источники, столбцы - точки экрана
+    # x_screen shape: (N_points,), x_sources shape: (M_sources, 1)
+    dx = x_screen[np.newaxis, :] - x_sources[:, np.newaxis]
+    dz = z_screen - z_sources[:, np.newaxis]
+    
+    # Расстояние r от каждого источника до каждой точки экрана 
+    r = np.sqrt(dx**2 + dz**2)
+    
+    # Волновое число k [cite: 27]
+    k = 2 * np.pi / wavelengths[:, np.newaxis]
+    
+    # Комплексное поле U = (E0 / r) * exp(-j * k * r) 
+    # Затухание поля как 1/r [cite: 91]
+    fields = (amplitudes[:, np.newaxis] / r) * np.exp(-1j * k * r)
+    
+    # Суммируем вклады всех источников в каждой точке экрана
+    return np.sum(fields, axis=0)
