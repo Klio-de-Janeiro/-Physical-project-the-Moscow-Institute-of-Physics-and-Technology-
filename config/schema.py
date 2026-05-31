@@ -14,7 +14,7 @@ class SimulationConfig(BaseModel):
     # Настройки когерентности и щелей
     delta_lambda: float = 0.0
     spatial_samples: int = 10
-    w_slit: float = 0.0005       # 0.5 мм ширина щели
+    w_slit: float = 0.000008       # 0.5 мм ширина щели
     slits_enabled: bool = False
     
     # НОВОЕ: дистанция между щелями (в метрах)

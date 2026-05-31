@@ -158,17 +158,23 @@ class AppController:
         self.on_params_changed()
 
     def update_config(self, **kwargs):
-        """Универсальный метод для обновления конфига (напр. смещение экрана z_trans)"""
-        for key, value in kwargs.items():
-            if hasattr(self.config, key):
+            """Универсальный метод для обновления конфига (напр. смещение экрана z_trans или ширины щелей)"""
+            for key, value in kwargs.items():
+                # Убрали проверку if hasattr, чтобы гарантированно сохранять новые параметры (типа w_slit)
                 setattr(self.config, key, value)
-                
-            # Если мы двигаем преграду (z_trans), нужно сбросить волны, 
-            # чтобы отражение пересчиталось для новой координаты мгновенно
-            if key == 'z_trans':
-                self.wavefront_drawer.clear()
-                
-        self.on_params_changed()
+                    
+                # Если мы двигаем преграду (z_trans), нужно сбросить волны, 
+                # чтобы отражение пересчиталось для новой координаты мгновенно
+                if key == 'z_trans':
+                    self.wavefront_drawer.clear()
+                    
+            # Это обновит физику (интерференцию)
+            self.on_params_changed()
+            
+            # === ДОБАВЛЕНО ДЛЯ ПЕРЕРИСОВКИ ЩЕЛЕЙ ===
+            # Заставляем главное окно мгновенно перерисовать ширину щелей
+            if hasattr(self, 'main_window'):
+                self.main_window.update_scene_elements()
 
     # === ГЕНЕРАЦИЯ ВОЛН И ФИЗИКА ===
 

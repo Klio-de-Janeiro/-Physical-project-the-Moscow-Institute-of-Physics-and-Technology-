@@ -41,9 +41,7 @@ class MainWindow(QMainWindow):
             self.wave_curves.append(curve)
 
     def finalize_init(self, controller):
-        """Подключение логики контроллера после сборки UI"""
         self.controller = controller
-        
         self.scene_plot.setXRange(-0.05, self.controller.config.z_screen + 0.15)
 
         self.btn_point.clicked.connect(lambda: self.controller.activate_placement('point'))
@@ -52,10 +50,11 @@ class MainWindow(QMainWindow):
         self.reset_btn.clicked.connect(self.controller.reset_all)
         self.slit_slider.valueChanged.connect(self._on_slit_distance_changed)
 
-        # Подключаем нижнюю панель к контроллеру
+        # ДОБАВЬ ЭТУ СТРОЧКУ СЮДА:
+        self.w_slit_slider.valueChanged.connect(lambda v: self.controller.update_config(w_slit=v / 1000.0))
+
         self.screen_cb.toggled.connect(self.controller.set_slits_enabled)
         self.z_trans_slider.valueChanged.connect(lambda v: self.controller.update_config(z_trans=v))
-
         self.update_scene_elements()
 
     def _on_slit_distance_changed(self, value):
@@ -181,28 +180,46 @@ class MainWindow(QMainWindow):
         self.btn_extended = QPushButton("Протяжённый источник")
         src_layout.addWidget(self.btn_point)
         src_layout.addWidget(self.btn_extended)
+        
+        # Инпут для фазы (сразу добавляем в группу источников)
+        self.phi_input = QDoubleSpinBox()
+        self.phi_input.setRange(-180.0, 180.0) # Градусы
+        self.phi_input.setSingleStep(5.0)    # Шаг 5 градусов
+        self.phi_input.setPrefix("phi (град): ")
+        src_layout.addWidget(self.phi_input)
+        
         src_group.setLayout(src_layout)
         right_layout.addWidget(src_group)
 
         slit_group = QGroupBox("Две щели")
         slit_layout = QVBoxLayout()
-        # НОВЫЙ ПОЛЗУНОК: от 0 до 20 мм, по умолчанию 2 мм
+        
+        # Ползунок расстояния между щелями
         self.slit_slider = CustomSlider("Расстояние между щелями (мм)", 0, 20, 2)
-        self.btn_add_slits = QPushButton("Добавить две щели")
         slit_layout.addWidget(self.slit_slider)
+        
+        # Ползунок ширины щели
+        self.w_slit_slider = CustomSlider("Ширина щели (мм)", 0.01, 1.0, 0.1) 
+        slit_layout.addWidget(self.w_slit_slider)
+        
+        self.btn_add_slits = QPushButton("Добавить две щели")
         slit_layout.addWidget(self.btn_add_slits)
         slit_group.setLayout(slit_layout)
         right_layout.addWidget(slit_group)
 
+        # График интенсивности
         self.intensity_view = pg.GraphicsLayoutWidget()
         self.intensity_plot = self.intensity_view.addPlot(title="Интерференция I_norm(x)")
-        self.intensity_plot.setLabel('bottom', 'x', units='m') # Тоже умная ось
+        self.intensity_plot.setLabel('bottom', 'x', units='m') 
         self.intensity_plot.setLabel('left', 'Интенсивность (норм.)')
-        self.intensity_plot.setMouseEnabled(x=False, y=False) 
-        self.intensity_plot.hideButtons()                     
+        
+        # --- ИСПРАВЛЕНИЯ ДЛЯ ЗУМА И ПЕРЕМЕЩЕНИЯ ---
+        self.intensity_plot.setMouseEnabled(x=True, y=False)  # РАЗРЕШИЛИ мышку по оси X
         self.intensity_plot.setMenuEnabled(False)             
+        # Жесткие лимиты: от -50 мм до +50 мм
+        self.intensity_plot.setLimits(xMin=-0.05, xMax=0.05, yMin=0, yMax=1.05)
         self.intensity_plot.setYRange(0, 1.05)                
-        self.intensity_plot.setXRange(-0.015, 0.015) # Синхронизируем со сценой
+        self.intensity_plot.setXRange(-0.02, 0.02)            # Стартовый обзор +- 20 мм
         
         self.intensity_curve = self.intensity_plot.plot(pen=pg.mkPen('y', width=2))
         right_layout.addWidget(self.intensity_view, 1)
@@ -220,16 +237,10 @@ class MainWindow(QMainWindow):
         bottom_layout.addWidget(self.screen_cb)
         bottom_layout.addWidget(self.z_trans_slider)
         root_layout.addWidget(self.bottom_panel)
-        
-        self.phi_input = QDoubleSpinBox()
-        self.phi_input.setRange(-180.0, 180.0) # Градусы
-        self.phi_input.setSingleStep(5.0)    # Шаг 5 градусов
-        self.phi_input.setPrefix("phi (град): ")
-        src_layout.addWidget(self.phi_input)
-
     def get_screen_coords(self):
-        # Массив для расчета физики тоже сужаем до +-15 мм
-        return np.linspace(-0.015, 0.015, 1000)
+        # Массив для расчета физики расширяем до +- 50 мм 
+        # и делаем 3000 точек для высокой детализации при приближении!
+        return np.linspace(-0.05, 0.05, 3000)
 
     def update_scene_elements(self):
         """Обновление источников и отрисовка экрана с прорезанными щелями"""
@@ -258,7 +269,10 @@ class MainWindow(QMainWindow):
             else:
                 slits_x = [-0.001, 0.001]  # По умолчанию дырки на +- 1 мм
             
-            vis_w = 0.0005 # Визуальная ширина дырки теперь 0.5 мм 
+            # --- БЫЛО: vis_w = 0.0005 ---
+            # --- СТАЛО: ---
+            vis_w = getattr(cfg, 'w_slit', 0.0005) 
+            
             current_x = -0.05  
             
             for sx in slits_x:
