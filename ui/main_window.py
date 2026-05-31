@@ -41,22 +41,26 @@ class MainWindow(QMainWindow):
             self.wave_curves.append(curve)
 
     def finalize_init(self, controller):
+        """Подключение логики контроллера после сборки UI"""
         self.controller = controller
+        
         self.scene_plot.setXRange(-0.05, self.controller.config.z_screen + 0.15)
 
         self.btn_point.clicked.connect(lambda: self.controller.activate_placement('point'))
-        self.btn_extended.clicked.connect(lambda: self.controller.activate_placement('extended'))
-        self.btn_add_slits.clicked.connect(self.controller.add_two_slits)
+        self.btn_extended.clicked.connect(lambda: self.controller.activate_placement('extended')) # Вернули!
+        
         self.reset_btn.clicked.connect(self.controller.reset_all)
+        
+        self.dl_slider.valueChanged.connect(lambda v: self.controller.update_config(delta_lambda=v * 1e-9))
         self.slit_slider.valueChanged.connect(self._on_slit_distance_changed)
-
-        # ДОБАВЬ ЭТУ СТРОЧКУ СЮДА:
         self.w_slit_slider.valueChanged.connect(lambda v: self.controller.update_config(w_slit=v / 1000.0))
 
+        # Подключаем нижнюю панель к контроллеру
         self.screen_cb.toggled.connect(self.controller.set_slits_enabled)
         self.z_trans_slider.valueChanged.connect(lambda v: self.controller.update_config(z_trans=v))
-        self.update_scene_elements()
 
+        self.update_scene_elements()
+        
     def _on_slit_distance_changed(self, value):
         if self.controller:
             self.controller.slit_distance_m = value / 1000.0
@@ -177,11 +181,17 @@ class MainWindow(QMainWindow):
         src_group = QGroupBox("Добавление источников")
         src_layout = QVBoxLayout()
         self.btn_point = QPushButton("Точечный источник")
+        
+        # === ВЕРНУЛИ КНОПКУ ПРОТЯЖЕННОГО ИСТОЧНИКА ===
         self.btn_extended = QPushButton("Протяжённый источник")
         src_layout.addWidget(self.btn_point)
         src_layout.addWidget(self.btn_extended)
         
-        # Инпут для фазы (сразу добавляем в группу источников)
+        # Ползунок ширины спектра: от 0 до 200 нм
+        self.dl_slider = CustomSlider("Ширина спектра Δλ (нм)", 0, 200, 0)
+        src_layout.addWidget(self.dl_slider)
+        
+        # Инпут для фазы
         self.phi_input = QDoubleSpinBox()
         self.phi_input.setRange(-180.0, 180.0) # Градусы
         self.phi_input.setSingleStep(5.0)    # Шаг 5 градусов
@@ -202,8 +212,8 @@ class MainWindow(QMainWindow):
         self.w_slit_slider = CustomSlider("Ширина щели (мм)", 0.01, 1.0, 0.1) 
         slit_layout.addWidget(self.w_slit_slider)
         
-        self.btn_add_slits = QPushButton("Добавить две щели")
-        slit_layout.addWidget(self.btn_add_slits)
+        # === КНОПКУ "Добавить две щели" УБРАЛИ ===
+        
         slit_group.setLayout(slit_layout)
         right_layout.addWidget(slit_group)
 
@@ -214,12 +224,11 @@ class MainWindow(QMainWindow):
         self.intensity_plot.setLabel('left', 'Интенсивность (норм.)')
         
         # --- ИСПРАВЛЕНИЯ ДЛЯ ЗУМА И ПЕРЕМЕЩЕНИЯ ---
-        self.intensity_plot.setMouseEnabled(x=True, y=False)  # РАЗРЕШИЛИ мышку по оси X
+        self.intensity_plot.setMouseEnabled(x=True, y=False)  
         self.intensity_plot.setMenuEnabled(False)             
-        # Жесткие лимиты: от -50 мм до +50 мм
         self.intensity_plot.setLimits(xMin=-0.05, xMax=0.05, yMin=0, yMax=1.05)
         self.intensity_plot.setYRange(0, 1.05)                
-        self.intensity_plot.setXRange(-0.02, 0.02)            # Стартовый обзор +- 20 мм
+        self.intensity_plot.setXRange(-0.02, 0.02)            
         
         self.intensity_curve = self.intensity_plot.plot(pen=pg.mkPen('y', width=2))
         right_layout.addWidget(self.intensity_view, 1)
@@ -237,6 +246,7 @@ class MainWindow(QMainWindow):
         bottom_layout.addWidget(self.screen_cb)
         bottom_layout.addWidget(self.z_trans_slider)
         root_layout.addWidget(self.bottom_panel)
+         
     def get_screen_coords(self):
         # Массив для расчета физики расширяем до +- 50 мм 
         # и делаем 3000 точек для высокой детализации при приближении!
