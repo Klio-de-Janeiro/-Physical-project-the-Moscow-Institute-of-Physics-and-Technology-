@@ -30,6 +30,11 @@ class AppController:
 
         self.animation_timer = QTimer(); self.animation_timer.timeout.connect(self.update_animation)
         self.refresh_timer = QTimer(); self.refresh_timer.timeout.connect(self.update_interference)
+        self.wave_gen_timer = QTimer()
+        self.wave_gen_timer.timeout.connect(self.add_waves_from_sources)
+
+        # В методе run (после self.main_window.show()):
+        self.wave_gen_timer.start(200)   # каждые 200 мс добавляем новые волны
 
     def run(self):
         self.main_window.show()
@@ -53,25 +58,9 @@ class AppController:
         self.main_window.start_source_preview(color, width)
         self.main_window.scene_view.setCursor(Qt.CursorShape.CrossCursor)
 
-    def add_source(self, x, wl, E0, phi0, color, is_ext=False, width=0.0):
-        if self.config.N_src >= 10: return QMessageBox.warning(self.main_window, "Limit", "Максимум 10")
-        [getattr(self.config, k).append(v) for k, v in zip(('x_src','lambdas','E0','phi0','source_colors','src_widths'), (x,wl,E0,phi0,color,width))]
-        self.config.N_src = len(self.config.x_src); self.on_params_changed()
-
-    def remove_source(self, idx):
-        for k in ('x_src','lambdas','E0','phi0','source_colors','src_widths'): getattr(self.config, k).pop(idx)
-        self.config.N_src = len(self.config.x_src); self.on_params_changed()
-
-    def add_two_slits(self):
-        d = self.slit_distance_mm / 1000.0
-        self.config.x_slit = [-d/2, d/2]; self.on_params_changed()
-
-    def reset_all(self):
-        for k in ('x_src','lambdas','E0','phi0','source_colors','src_widths','x_slit'): setattr(self.config, k, [])
-        self.config.N_src = 0; self.on_params_changed()
-
     def on_params_changed(self):
-        self.main_window.update_scene_elements(); self.update_interference()
+        self.main_window.update_scene_elements()
+        self.update_interference()
 
     def cancel_placement(self):
         self.pending_source_params = None; self.placement_mode = None
@@ -80,9 +69,10 @@ class AppController:
     def update_animation(self):
         dt = self.config.dt_anim
         self.wave_time += dt
-        self.wavefront_drawer.update_radii(dt, 0.5, self.config, self.wave_time)
-        self.main_window.update_wave_visuals()  # ← Теперь метод существует
-
+        # Исправленный вызов: удалён четвёртый аргумент self.wave_time
+        self.wavefront_drawer.update_radii(dt, self.config.wave_speed, self.config)
+        self.main_window.update_wave_visuals()
+        
     def update_interference(self):
         t0 = time.perf_counter()
         x = np.linspace(-0.1, 0.1, self.config.screen_resolution)
@@ -99,3 +89,52 @@ class AppController:
         wl, color, width = self.pending_source_params
         self.add_source(x, wl, 1.0, 0.0, color, is_ext=(width>0), width=width)
         self.cancel_placement()
+        
+    def add_waves_from_sources(self):
+        """Создаёт новую сферическую волну от каждого активного источника."""
+        for idx in range(self.config.N_src):
+            x_pos = self.config.x_src[idx]
+            color = self.config.source_colors[idx]
+            # предполагается, что у вас есть метод add_wave в wavefront_drawer
+            self.wavefront_drawer.add_wave(x_pos, color=color)
+            
+
+    # В методе on_params_changed (или там, где меняются источники):
+    def on_params_changed(self):
+        self.wavefront_drawer.rebuild_from_config(self.config)  # ← перестроить базовые волны
+        self.main_window.update_scene_elements()
+        self.update_interference()
+
+    # При сбросе/удалении источников тоже нужно перестраивать. У вас уже есть reset_all, remove_source — добавьте туда rebuild:
+    def remove_source(self, idx):
+        for k in ('x_src','lambdas','E0','phi0','source_colors','src_widths'):
+            getattr(self.config, k).pop(idx)
+        self.config.N_src = len(self.config.x_src)
+        self.wavefront_drawer.rebuild_from_config(self.config)   # ← добавить
+        self.on_params_changed()
+
+    def reset_all(self):
+        for k in ('x_src','lambdas','E0','phi0','source_colors','src_widths','x_slit'):
+            setattr(self.config, k, [])
+        self.config.N_src = 0
+        self.wavefront_drawer.rebuild_from_config(self.config)   # ← добавить
+        self.on_params_changed()
+
+    def add_two_slits(self):
+        d = self.slit_distance_mm / 1000.0
+        self.config.x_slit = [-d/2, d/2]
+        # Если вы хотите, чтобы волны шли от щелей, а не от источников — но у вас логика волн от источников.
+        # Щели у вас используются только для интерференции, а волны рисуются от источников. Это нормально.
+        self.on_params_changed()   # здесь уже есть rebuild? Нет, on_params_changed не вызывает rebuild. Исправим:
+        # Лучше переписать on_params_changed так, как выше.
+
+    # Также в методе add_source:
+    def add_source(self, x, wl, E0, phi0, color, is_ext=False, width=0.0):
+        if self.config.N_src >= 10:
+            QMessageBox.warning(self.main_window, "Limit", "Максимум 10")
+            return
+        for k, v in zip(('x_src','lambdas','E0','phi0','source_colors','src_widths'), (x,wl,E0,phi0,color,width)):
+            getattr(self.config, k).append(v)
+        self.config.N_src = len(self.config.x_src)
+        self.wavefront_drawer.rebuild_from_config(self.config)   # ← добавить
+        self.on_params_changed()

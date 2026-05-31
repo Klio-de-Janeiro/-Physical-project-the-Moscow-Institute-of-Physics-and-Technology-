@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QGroupBox, QGraphicsRectItem
-from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtCore import Qt, QRectF, QTimer
 import pyqtgraph as pg
 import numpy as np
 from ui.controls import CustomSlider
@@ -11,7 +11,7 @@ class MainWindow(QMainWindow):
         self.controller = controller
         self.setWindowTitle("Интерференция и когерентность")
         self.setGeometry(100, 100, 1200, 800)
-        
+
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
@@ -75,11 +75,39 @@ class MainWindow(QMainWindow):
         self.preview_item = None
         self.preview_color = None
         self.preview_width = 0.0
-        
+
+        # Таймер для непрерывной генерации волн
+        self.wave_gen_timer = QTimer()
+        self.wave_gen_timer.timeout.connect(self._generate_new_waves)
+        self.wave_gen_timer.start(200)  # каждые 200 мс создаём новую волну от каждого источника
+
         self.update_scene_elements()
+
+    def _generate_new_waves(self):
+        """Периодически добавляет новые сферические волны от всех активных источников."""
+        if hasattr(self.controller, 'add_waves_from_sources'):
+            self.controller.add_waves_from_sources()
+        else:
+            # fallback: если в контроллере нет такого метода, создаём волны напрямую через drawer
+            if hasattr(self.controller, 'wavefront_drawer') and hasattr(self.controller, 'config'):
+                drawer = self.controller.wavefront_drawer
+                cfg = self.controller.config
+                for idx in range(cfg.N_src):
+                    drawer.add_wave(cfg.x_src[idx], color=cfg.source_colors[idx])
+
+    def stop_wave_generation(self):
+        """Останавливает таймер генерации волн (вызывается при закрытии окна)."""
+        if self.wave_gen_timer.isActive():
+            self.wave_gen_timer.stop()
+
+    def closeEvent(self, event):
+        """Корректно останавливаем таймер при закрытии окна."""
+        self.stop_wave_generation()
+        event.accept()
 
     def update_wave_visuals(self):
         """Отрисовка сферических фронтов через pg.PlotCurveItem"""
+        # Удаляем старые кривые
         for c in self.wave_curves:
             self.scene_plot.removeItem(c)
         self.wave_curves.clear()
@@ -101,10 +129,9 @@ class MainWindow(QMainWindow):
     def _make_source_item(self, x, color, width):
         """Создаёт статичный элемент источника: точка или полностью закрашенный прямоугольник"""
         if width > 0:
-            # QGraphicsRectItem гарантирует чёткую отрисовку в мировых координатах
             rect = QGraphicsRectItem(QRectF(-0.005, x - width / 2, 0.01, width))
             rect.setPen(pg.mkPen(color=color, width=2))
-            rect.setBrush(pg.mkBrush(color=color))  # Полностью закрашен, без прозрачности
+            rect.setBrush(pg.mkBrush(color=color))
             return rect
         else:
             spot = pg.ScatterPlotItem([0], [x], symbol='o', size=10, pen=color, brush=color)

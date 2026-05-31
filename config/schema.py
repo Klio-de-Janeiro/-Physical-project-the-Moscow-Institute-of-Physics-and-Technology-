@@ -4,6 +4,7 @@ from typing import List
 class SimulationConfig(BaseModel):
     N_src: int = Field(0, ge=0, le=10)
     x_src: List[float] = []
+    wave_speed: float = Field(0.2, ge=0.01, le=2.0)   # ✅ добавлено
     lambdas: List[float] = []
     E0: List[float] = []
     phi0: List[float] = []
