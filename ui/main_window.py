@@ -10,7 +10,7 @@ from utils.color_map import wavelength_to_rgb
 from PyQt6.QtWidgets import QDoubleSpinBox
 
 class MainWindow(QMainWindow):
-    MAX_WAVE_ITEMS = 120  # Пул переиспользуемых кривых для высокого FPS
+    MAX_WAVE_ITEMS = 120  
 
     def __init__(self, controller=None):
         super().__init__()
@@ -18,16 +18,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Интерференция и когерентность (МФТИ)")
         self.setGeometry(100, 100, 1200, 800)
 
-        # Списки для статических элементов
         self.source_items = []
         self.slit_items = []
         
-        # Состояние предпросмотра
         self.preview_item = None
         self.preview_color = None
         self.preview_width = 0.0
 
-        # Собираем интерфейс
         self.setup_ui()
         self._init_wave_pool()
 
@@ -53,12 +50,12 @@ class MainWindow(QMainWindow):
         
         self.dl_slider.valueChanged.connect(lambda v: self.controller.update_config(delta_lambda=v * 1e-9))
         self.slit_slider.valueChanged.connect(self._on_slit_distance_changed)
-        self.w_slit_slider.valueChanged.connect(lambda v: self.controller.update_config(w_slit=v / 1000.0))
+        self.w_slit_slider.valueChanged.connect(lambda v: self.controller.update_config(w_slit=v * 1e-6))
 
-        # Подключаем нижнюю панель к контроллеру
         self.screen_cb.toggled.connect(self.controller.set_slits_enabled)
         self.z_trans_slider.valueChanged.connect(lambda v: self.controller.update_config(z_trans=v))
-
+        #
+        self.w_src_slider.valueChanged.connect(lambda v: self.controller.set_extended_source_width(v / 1000.0))
         self.update_scene_elements()
         
     def _on_slit_distance_changed(self, value):
@@ -67,7 +64,6 @@ class MainWindow(QMainWindow):
             if hasattr(self.controller, '_update_slits'):
                 self.controller._update_slits()
 
-    # === РЕНДЕРИНГ И ОБНОВЛЕНИЯ ===
 
     def update_wave_visuals(self):
             """Отрисовка волн: обрезка об экран со щелями и об финальный экран"""
@@ -78,7 +74,6 @@ class MainWindow(QMainWindow):
             cfg = self.controller.config
             slits_on = getattr(cfg, 'slits_enabled', False)
             
-            # Генерируем только правую полусферу
             theta = np.linspace(-np.pi/2, np.pi/2, 150)
 
             active_count = 0
@@ -91,13 +86,11 @@ class MainWindow(QMainWindow):
                 z = z_center + r * np.cos(theta)
                 x = wave['center_x'] + r * np.sin(theta)
                 
-                # 1. ОБРЕЗКА ОБ ПРЕГРАДУ СО ЩЕЛЯМИ
                 if slits_on and wave.get('is_primary', True):
                     mask_cut = z > cfg.z_trans
                     z[mask_cut] = np.nan
                     x[mask_cut] = np.nan
                     
-                # 2. ОБРЕЗКА ОБ ФИНАЛЬНЫЙ ЭКРАН НАБЛЮДЕНИЯ (Все волны исчезают здесь)
                 mask_final = z > cfg.z_screen
                 z[mask_final] = np.nan
                 x[mask_final] = np.nan
@@ -124,7 +117,6 @@ class MainWindow(QMainWindow):
     def update_intensity_display(self, x_vals, I_norm):
         self.intensity_curve.setData(x_vals, I_norm)
 
-    # === ИНТЕРАКТИВ И ПРЕДПРОСМОТР ===
     def start_preview(self, color, width):
         self.preview_color = color
         self.preview_width = width
@@ -156,17 +148,14 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         root_layout = QVBoxLayout(central)
 
-        # === ВЕРХНЯЯ ЧАСТЬ ===
         top_layout = QHBoxLayout()
 
         self.scene_view = pg.GraphicsLayoutWidget()
         self.scene_plot = self.scene_view.addPlot(title="Распространение волн (x-z)")
         self.scene_plot.setAspectLocked(False)
+
+        self.scene_plot.setYRange(-0.015, 0.015) # mm
         
-        # --- НОВЫЙ МАСШТАБ СЦЕНЫ (-15 мм ... +15 мм) ---
-        self.scene_plot.setYRange(-0.015, 0.015) 
-        
-        # Включаем умные приставки (PyQtGraph сам подставит 'm' -> 'mm')
         self.scene_plot.setLabel('bottom', 'z', units='m')
         self.scene_plot.setLabel('left', 'x', units='m')
         self.scene_plot.setMouseEnabled(x=False, y=False)
@@ -174,7 +163,6 @@ class MainWindow(QMainWindow):
         
         top_layout.addWidget(self.scene_view, stretch=3)
 
-        # ПРАВАЯ ПАНЕЛЬ
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
 
@@ -182,16 +170,13 @@ class MainWindow(QMainWindow):
         src_layout = QVBoxLayout()
         self.btn_point = QPushButton("Точечный источник")
         
-        # === ВЕРНУЛИ КНОПКУ ПРОТЯЖЕННОГО ИСТОЧНИКА ===
         self.btn_extended = QPushButton("Протяжённый источник")
         src_layout.addWidget(self.btn_point)
         src_layout.addWidget(self.btn_extended)
         
-        # Ползунок ширины спектра: от 0 до 200 нм
         self.dl_slider = CustomSlider("Ширина спектра Δλ (нм)", 0, 200, 0)
         src_layout.addWidget(self.dl_slider)
         
-        # Инпут для фазы
         self.phi_input = QDoubleSpinBox()
         self.phi_input.setRange(-180.0, 180.0) # Градусы
         self.phi_input.setSingleStep(5.0)    # Шаг 5 градусов
@@ -209,21 +194,17 @@ class MainWindow(QMainWindow):
         slit_layout.addWidget(self.slit_slider)
         
         # Ползунок ширины щели
-        self.w_slit_slider = CustomSlider("Ширина щели (мм)", 0.01, 1.0, 0.1) 
+        self.w_slit_slider = CustomSlider("Ширина щели (мкм)", 1.0, 100.0, 10.0) 
         slit_layout.addWidget(self.w_slit_slider)
-        
-        # === КНОПКУ "Добавить две щели" УБРАЛИ ===
         
         slit_group.setLayout(slit_layout)
         right_layout.addWidget(slit_group)
 
-        # График интенсивности
         self.intensity_view = pg.GraphicsLayoutWidget()
         self.intensity_plot = self.intensity_view.addPlot(title="Интерференция I_norm(x)")
         self.intensity_plot.setLabel('bottom', 'x', units='m') 
         self.intensity_plot.setLabel('left', 'Интенсивность (норм.)')
         
-        # --- ИСПРАВЛЕНИЯ ДЛЯ ЗУМА И ПЕРЕМЕЩЕНИЯ ---
         self.intensity_plot.setMouseEnabled(x=True, y=False)  
         self.intensity_plot.setMenuEnabled(False)             
         self.intensity_plot.setLimits(xMin=-0.05, xMax=0.05, yMin=0, yMax=1.05)
@@ -238,7 +219,6 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(right_panel, stretch=1)
         root_layout.addLayout(top_layout, stretch=1)
 
-        # === НИЖНЯЯ ПАНЕЛЬ ===
         self.bottom_panel = QGroupBox("Управление сплошным экраном")
         bottom_layout = QHBoxLayout(self.bottom_panel)
         self.screen_cb = QCheckBox("Включить сплошной экран")
@@ -246,10 +226,12 @@ class MainWindow(QMainWindow):
         bottom_layout.addWidget(self.screen_cb)
         bottom_layout.addWidget(self.z_trans_slider)
         root_layout.addWidget(self.bottom_panel)
+        
+        self.w_src_slider = CustomSlider("Ширина источника (мм)", 0.0, 5.0, 0.0)
+        src_layout.addWidget(self.w_src_slider)
+        
          
     def get_screen_coords(self):
-        # Массив для расчета физики расширяем до +- 50 мм 
-        # и делаем 3000 точек для высокой детализации при приближении!
         return np.linspace(-0.05, 0.05, 3000)
 
     def update_scene_elements(self):
@@ -277,10 +259,8 @@ class MainWindow(QMainWindow):
             if hasattr(cfg, 'x_slit') and len(cfg.x_slit) > 0:
                 slits_x = sorted(cfg.x_slit)
             else:
-                slits_x = [-0.001, 0.001]  # По умолчанию дырки на +- 1 мм
-            
-            # --- БЫЛО: vis_w = 0.0005 ---
-            # --- СТАЛО: ---
+                slits_x = [-0.001, 0.001] 
+
             vis_w = getattr(cfg, 'w_slit', 0.0005) 
             
             current_x = -0.05  

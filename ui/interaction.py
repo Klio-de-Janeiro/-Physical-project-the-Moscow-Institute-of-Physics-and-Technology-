@@ -17,7 +17,7 @@ class InteractionHandler(QObject):
     def on_move(self, pos):
         vb = self.mw.scene_plot.getViewBox()
         pt = vb.mapSceneToView(pos)
-        # Ограничиваем перетаскивание пределами +- 15 мм
+        
         x = max(-0.015, min(0.015, pt.y())) 
 
         if getattr(self.ctrl, 'pending_source_params', None) is not None:
@@ -46,7 +46,6 @@ class InteractionHandler(QObject):
                 self.ctrl.place_source_at(x)
                 return
                 
-            # Радиус захвата теперь 0.5 мм (0.0005 м)
             for i, sx in enumerate(self.ctrl.config.x_src):
                 if abs(x-sx) < 0.0005 and abs(z) < 0.02: 
                     self.dragging = ('source', i)

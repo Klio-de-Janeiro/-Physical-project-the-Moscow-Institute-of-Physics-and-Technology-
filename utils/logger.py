@@ -11,7 +11,6 @@ class PerformanceLogger:
         """Записывает время расчета кадра и периодически выводит средний FPS"""
         self.times.append(frame_time)
         
-        # Выводим статистику раз в 2 секунды, чтобы не засорять консоль
         current_time = time.time()
         if current_time - self.last_print >= self.print_interval:
             avg_time = sum(self.times) / len(self.times)
